@@ -152,10 +152,7 @@ std::pair<std::unique_ptr<TreeNode>, Anagrams> LoadDict(const std::string& dictP
     return std::make_pair(std::move(treeRoot), std::move(anagrams));
 }
 
-void CheckDictRecursive(
-    const TreeNode* node,
-    const std::string& currentWord,
-    std::vector<std::string>& words)
+void CheckDictRecursive(const TreeNode* node, const std::string& currentWord, std::vector<std::string>& words)
 {
     if (node->endsWord)
     {
@@ -186,11 +183,34 @@ void CheckDict(const TreeNode* treeRoot)
     }
 }
 
-void FindWords(
-    const int wordId,
-    const int depth,
-    const int startingAscii,
-    SharedData* shared)
+void SwapAnagrams(const int wordId, std::vector<const std::string*>& words, SharedData* shared)
+{
+    if (wordId == words.size())
+    {
+        // Output
+        (*shared->answerCount)++;
+        std::cout << '\r';
+        for (const auto* word : words)
+        {
+            std::cout << *word << " ";
+            *shared->outputStream << *word << " ";
+        }
+        std::cout << std::endl;
+        *shared->outputStream << std::endl;
+    }
+    else
+    {
+        const std::string& baseWord = shared->wordPtrs[wordId]->endedWord;
+        const std::string lexSortedWord = LexSortedWord(baseWord);
+        for (const std::string& anagram : shared->anagrams->at(lexSortedWord))
+        {
+            words.at(wordId) = &anagram;
+            SwapAnagrams(wordId + 1, words, shared);
+        }
+    }
+}
+
+void FindWords(const int wordId, const int depth, const int startingAscii, SharedData* shared)
 {
     const TreeNode* currNode = shared->wordPtrs.at(wordId);
 
@@ -201,15 +221,8 @@ void FindWords(
             if (wordId == shared->wordCount - 1)
             {
                 std::lock_guard<std::mutex> lock(*shared->mutex);
-                (*shared->answerCount)++;
-                std::cout << '\r';
-                for (const auto* foundWord : shared->wordPtrs)
-                {
-                    std::cout << foundWord->endedWord << " ";
-                    *shared->outputStream << foundWord->endedWord << " ";
-                }
-                std::cout << std::endl;
-                *shared->outputStream << std::endl;
+                std::vector<const std::string*> words(shared->wordCount, nullptr);
+                SwapAnagrams(0, words, shared);
             }
             else
             {
