@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+// Word dictionary tree node
 struct TreeNode
 {
     TreeNode* parent;
@@ -22,8 +23,10 @@ struct TreeNode
     std::string endedWord;
 };
 
+// Structure that maps lexicographically sorted words to its dictionary anagrams
 using Anagrams = std::unordered_map<std::string, std::unordered_set<std::string>>;
 
+// Data structure for passing information through the recursion and between threads
 struct SharedData
 {
     SharedData(
@@ -68,6 +71,7 @@ struct SharedData
     bool threadFinished;
 };
 
+// Returns a word with sorted characters
 std::string LexSortedWord(const std::string& word)
 {
     std::vector<char> arrayWord;
@@ -80,6 +84,7 @@ std::string LexSortedWord(const std::string& word)
     return std::string(arrayWord.begin(), arrayWord.end());
 }
 
+// Check whether there is a repeating character in a sorted word
 bool IsLetterRepeating(const std::string& lexSortedWord)
 {
     for (size_t i = 0; i < lexSortedWord.length() - 1; i++)
@@ -92,6 +97,7 @@ bool IsLetterRepeating(const std::string& lexSortedWord)
     return false;
 }
 
+// Adds a word to a dictionary tree
 void AddWord(TreeNode* treeRoot, const std::string& word)
 {
     TreeNode* currNode = treeRoot;
@@ -115,11 +121,11 @@ void AddWord(TreeNode* treeRoot, const std::string& word)
     currNode->endedWord = word;
 }
 
+// Loads word dictionary from a file and returns the dictionary tree and sets of found anagrams
 std::pair<std::unique_ptr<TreeNode>, Anagrams> LoadDict(const std::string& dictPath, const int wordLength)
 {
     std::unique_ptr<TreeNode> treeRoot = std::make_unique<TreeNode>();
     treeRoot->parent = treeRoot.get();
-
     Anagrams anagrams;
 
     std::ifstream dictFile(dictPath);
@@ -152,6 +158,7 @@ std::pair<std::unique_ptr<TreeNode>, Anagrams> LoadDict(const std::string& dictP
     return std::make_pair(std::move(treeRoot), std::move(anagrams));
 }
 
+// Recursive section of the CheckDict function
 void CheckDictRecursive(const TreeNode* node, const std::string& currentWord, std::vector<std::string>& words)
 {
     if (node->endsWord)
@@ -167,6 +174,7 @@ void CheckDictRecursive(const TreeNode* node, const std::string& currentWord, st
     }
 }
 
+// Displays stats of a loaded word dictionary
 void CheckDict(const TreeNode* treeRoot)
 {
     std::vector<std::string> words;
@@ -183,11 +191,12 @@ void CheckDict(const TreeNode* treeRoot)
     }
 }
 
+// Called when a solution is found, generates and outputs all anagram combinations recursively
 void SwapAnagrams(const int wordId, std::vector<const std::string*>& words, SharedData* shared)
 {
     if (wordId == words.size())
     {
-        // Output
+        // Output this combination of anagrams
         (*shared->answerCount)++;
         std::cout << '\r';
         for (const auto* word : words)
@@ -200,6 +209,7 @@ void SwapAnagrams(const int wordId, std::vector<const std::string*>& words, Shar
     }
     else
     {
+        // Pick an anagram for the current word and proceed to the next word recursively
         const std::string& baseWord = shared->wordPtrs[wordId]->endedWord;
         const std::string lexSortedWord = LexSortedWord(baseWord);
         for (const std::string& anagram : shared->anagrams->at(lexSortedWord))
@@ -210,6 +220,7 @@ void SwapAnagrams(const int wordId, std::vector<const std::string*>& words, Shar
     }
 }
 
+// Recursive section of the FindAnswers function, called for each letter of each set word
 void FindWords(const int wordId, const int depth, const int startingAscii, SharedData* shared)
 {
     const TreeNode* currNode = shared->wordPtrs.at(wordId);
@@ -218,20 +229,25 @@ void FindWords(const int wordId, const int depth, const int startingAscii, Share
     {
         if (currNode->endsWord)
         {
+            // The word length has been reached and the word exists
             if (wordId == shared->wordCount - 1)
             {
+                // This is the final word of the set, output all anagram combinations
                 std::lock_guard<std::mutex> lock(*shared->mutex);
                 std::vector<const std::string*> words(shared->wordCount, nullptr);
                 SwapAnagrams(0, words, shared);
             }
             else
             {
+                // Proceed to the next word recursively
                 FindWords(wordId + 1, 0, startingAscii + 1, shared);
             }
         }
     }
     else
     {
+        // The word length has not yet been reached
+        // Try to proceed recursively with each letter
         for (int ascii = (depth == 0 ? startingAscii : 0); ascii < 26; ascii++)
         {
             if (currNode->children.at(ascii) != nullptr && !shared->usedLetters.at(ascii))
@@ -252,6 +268,7 @@ void FindWords(const int wordId, const int depth, const int startingAscii, Share
     }
 }
 
+// Executes the tree search for finding solutions
 int FindAnswers(
     const int wordCount,
     const int wordLength,
@@ -271,10 +288,17 @@ int FindAnswers(
     std::vector<std::shared_ptr<SharedData>> sharedDataObjects(threadCount, nullptr);
 
     SharedData sharedData(wordCount, wordLength, dict, &anagrams, outputStream);
+
+    // The single-threaded equivalent of the whole following loop block would be just calling:
+    // FindWords(0, 0, 0, &sharedData);
+    // The following logic simulates iterating the first 2 letters of the first word,
+    // equivalent to the first 2 FindWords recursive calls, int order to continue the search in
+    // a separate thread for each of those starting states
     for (int ascii0 = 0; ascii0 < 26; ascii0++)
     {
         if (dict->children.at(ascii0) != nullptr)
         {
+            // Simulate picking ascii0 as a first letter of the first word
             sharedData.usedLetters.at(ascii0) = true;
             sharedData.wordPtrs.at(0) = dict->children.at(ascii0).get();
             for (int ascii1 = 0; ascii1 < 26; ascii1++)
@@ -282,9 +306,12 @@ int FindAnswers(
                 if (dict->children.at(ascii0)->children.at(ascii1) != nullptr && !sharedData.usedLetters.at(ascii1))
                 {
                     {
+                        // Print out the two letters for reference
                         std::lock_guard<std::mutex> lock(*sharedData.mutex);
                         std::cout << "\r" << (char)(ascii0 + 'a') << (char)(ascii1 + 'a') << std::flush;
                     }
+
+                    // Wait for an available thread for the next initial state
                     int threadId = -1;
                     while (threadId == -1)
                     {
@@ -304,8 +331,12 @@ int FindAnswers(
                             }
                         }
                     }
+
+                    // Simulate picking ascii1 as a second letter of the first word
                     sharedData.usedLetters.at(ascii1) = true;
                     sharedData.wordPtrs.at(0) = dict->children.at(ascii0)->children.at(ascii1).get();
+
+                    // Start a new thread to continue the search
                     sharedDataObjects.at(threadId) = std::make_shared<SharedData>(SharedData(sharedData));
                     threads.at(threadId) = std::make_shared<std::thread>(std::thread(
                         FindWords,
