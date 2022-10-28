@@ -369,7 +369,7 @@ int main(int argc, char* argv[])
 {
     if (argc != 6)
     {
-        std::cout << "Parameters: number of words, word length, thead count, path to new line-delimited dictionary file, output file" << std::endl;
+        std::cout << "Parameters: number of words, word length, thead count, path to a new line-delimited dictionary file, output file" << std::endl;
         exit(1);
     }
 
